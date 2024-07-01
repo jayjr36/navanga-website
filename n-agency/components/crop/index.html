@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html data-bs-theme="dark">
+
+<head>
+    <title>Navanga Profile Cropper</title>
+    <!-- Bootstrap 5 CSS -->
+    <meta charset="UTF-8"> <!-- Specify the character encoding (UTF-8 in this case) -->
+
+    <link rel="stylesheet" rel="preload" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <!-- Import the library js file -->
+    <!-- You might want to use "cropper_jsmin.js" on an actual site -->
+    <script type="text/javascript" src="cropper.js"></script>
+    <style>
+        /* Ensure canvas and buttons fit within the viewport */
+        canvas {
+            max-width: 100%;
+            height: auto;
+        }
+
+        .btn-group {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
+    <!-- Firebase Firestore SDK -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-storage.js"></script>
+
+    <div class="container mt-4">
+        <!-- A canvas which cropper will draw on -->
+        <div class="row justify-content-center">
+            <div class="col-12 col-md-8">
+                <canvas id="testCanvas" class="rounded-3" width="300" height="300" style="border: 1px solid black;">Your
+                    browser does not
+                    support canvas.</canvas>
+            </div>
+        </div>
+
+
+        <!-- Loader element -->
+        <div id="loader" style="display: none; text-align: center;">
+            <div class="spinner-border" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p>Uploading...</p>
+        </div>
+
+        <div class="row justify-content-center mt-4">
+            <!-- Below are a series of inputs which allow file selection and interaction with the cropper api -->
+            <div class="col-12 col-md-8">
+                <div class="btn-group">
+                    <input type="file" id="fileInput" onchange="handleFileSelect()" class="form-control mb-2" />
+                    <button type="button" id="startCroppingButton" onclick="cropper.startCropping()"
+                        class="btn btn-primary" disabled>Start
+                        cropping</button>
+                    <button type="button" id="saveButton" onclick="uploadCroppedImage()" class="btn btn-success"
+                        disabled>Save</button>
+                    <button type="button" id="restoreButton" onclick="cropper.restore()" class="btn btn-danger"
+                        disabled>Restore</button>
+                </div>
+            </div>
+        </div>
+
+        <script type="text/javascript">
+
+            function sendMessageToParent(message) {
+                // The targetOrigin should be set to the origin of the parent web app to enhance security.
+                // "*" can be used to allow communication with any origin, but it's less secure.
+                const targetOrigin = '*';
+                parent.postMessage(message, targetOrigin);
+            }
+
+            //sendMessageToParent({ type: 'data', content: 'Hello from iframe!' });
+
+
+            // Function to handle messages received from the parent web app
+            function receiveMessage(event) {
+                // Do something with the received data from the parent web app
+                const dataFromParent = event.data;
+                console.log('Data received from parent web app:', dataFromParent);
+
+                // Now, you can send feedback back to the parent web app using postMessage.
+                const feedbackMessage = 'Thank you for your message!';
+                event.source.postMessage({ type: 'feedback', content: feedbackMessage }, event.origin);
+            }
+
+            // Listen for messages from the parent web app
+            window.addEventListener('message', receiveMessage, false);
+
+
+
+            cropper.start(document.getElementById("testCanvas"), 1); // initialize cropper by providing it with a target canvas and a XY ratio (height = width * ratio)
+
+            // Show the default image initially
+
+            function handleFileSelect() {
+                // this function will be called when the file input below is changed
+                var file = document.getElementById("fileInput").files[0]; // get a reference to the selected file
+
+                var reader = new FileReader(); // create a file reader
+                // set an onload function to show the image in cropper once it has been loaded
+                reader.onload = function (event) {
+                    var data = event.target.result; // the "data url" of the image
+                    cropper.showImage(data);
+                    cropper.startCropping(); // hand this to cropper, it will be displayed
+                };
+
+
+                // With this jQuery code:
+                var disabledState = !file;
+                $('#restoreButton, #startCroppingButton, #saveButton').prop('disabled', disabledState);
+
+
+
+
+                reader.readAsDataURL(file); // this loads the file as a data url calling the function above once done
+            }
+
+            // Initialize Firebase with your project's config
+            const firebaseConfig = {
+                apiKey: "AIzaSyCAQPWrCy_jiUKCqzXLUdQhCdqwmi-mquM",
+                authDomain: "navangahealthcare.firebaseapp.com",
+                projectId: "navangahealthcare",
+                storageBucket: "navangahealthcare.appspot.com",
+                messagingSenderId: "1028594049756",
+                appId: "1:1028594049756:web:42cbd23740f9e4fefb0a19",
+                measurementId: "G-5FY19WE9JT"
+            };
+            // Initialize Firebase
+            firebase.initializeApp(firebaseConfig);
+            // Initialize Firestore
+            const db = firebase.firestore();
+            // Get a reference to the Firebase Storage
+            var storageRef = firebase.storage().ref();
+            var fileName = "cropped_image.png";
+            // Function to get the logged-in user's email
+            function getUserEmail() {
+                // Check if a user is signed in
+                firebase.auth().onAuthStateChanged(function (user) {
+                    if (user) {
+                        // User is signed in, access the email
+                        const userEmail = user.email;
+                        console.log("Logged-in user email: " + userEmail);
+                        fileName = userEmail + ".png";
+
+                        // Listen for changes in the Firestore document
+                        db.collection("users").doc(user.uid).onSnapshot(function (doc) {
+
+                            let data = doc.data();
+                            // Show the profile image from Firestore data
+                            cropper.showImage(null, data['profileUrl']);
+
+                        });
+
+                        // You can use the userEmail variable as needed
+                    } else {
+                        // User is not signed in or signed out
+                        console.log("No user is currently signed in.");
+                    }
+                });
+            }
+
+            // Call this function whenever you want to get the user's email
+            // For example, you can call it when the page loads or after successful sign-in
+            getUserEmail();
+
+            // Function to upload the cropped image to Firebase Storage
+            // Function to upload the cropped image to Firebase Storage
+            // Function to upload the cropped image to Firebase Storage and update Firestore document
+            function uploadCroppedImage() {
+                var croppedImageData = cropper.getCroppedImageSrc();
+                // Change the filename as needed
+                // Show the loader
+                const loader = document.getElementById("loader");
+                loader.style.display = "block";
+                // Convert the data URL to a Blob object
+                var byteString = atob(croppedImageData.split(',')[1]);
+                var mimeString = croppedImageData.split(',')[0].split(':')[1].split(';')[0];
+                var ab = new ArrayBuffer(byteString.length);
+                var ia = new Uint8Array(ab);
+                for (var i = 0; i < byteString.length; i++) {
+                    ia[i] = byteString.charCodeAt(i);
+                }
+                var blob = new Blob([ab], { type: mimeString });
+
+                // Upload the image to Firebase Storage
+                var uploadTask = storageRef.child(`profiles/` + fileName).put(blob);
+
+                // Monitor the upload progress (optional)
+                uploadTask.on(
+                    "state_changed",
+                    function (snapshot) {
+                        // Handle progress, if needed
+                    },
+                    function (error) {
+                        // Handle error, if needed
+                    },
+                    function () {
+                        // Handle successful upload
+                        firebase.auth().onAuthStateChanged(function (user) {
+                            if (user) {
+                                // User is signed in, access the user's UID
+                                const userUID = user.uid;
+
+                                // Update Firestore document with the profile URL
+                                const firestore = firebase.firestore();
+                                const userRef = firestore.doc(`users/${userUID}`);
+
+                                // Set the profile URL field with merge option set to true
+                                userRef.set(
+                                    {
+                                        updating: true,
+                                    },
+                                    { merge: true }
+                                )
+                                    .then(() => {
+                                        loader.style.display = "none";
+                                        console.log("Firestore document updated with the profile URL.");
+                                    })
+                                    .catch((error) => {
+                                        loader.style.display = "none";
+                                        console.error("Error updating Firestore document: ", error);
+                                    });
+                            } else {
+                                // User is not signed in or signed out
+                                console.log("No user is currently signed in.");
+                            }
+                        });
+                        uploadTask.snapshot.ref.getDownloadURL().then(function (downloadURL) {
+                            console.log("Image uploaded successfully. URL: " + downloadURL);
+                            // You can use the downloadURL variable as needed
+
+                            // Check if a user is signed in
+                            firebase.auth().onAuthStateChanged(function (user) {
+                                if (user) {
+                                    // User is signed in, access the user's UID
+                                    const userUID = user.uid;
+
+                                    // Update Firestore document with the profile URL
+                                    const firestore = firebase.firestore();
+                                    const userRef = firestore.doc(`users/${userUID}`);
+
+                                    // Set the profile URL field with merge option set to true
+                                    userRef.set(
+                                        {
+                                            profileUrl: downloadURL
+                                        },
+                                        { merge: true }
+                                    )
+                                        .then(() => {
+                                            console.log("Firestore document updated with the profile URL.");
+                                        })
+                                        .catch((error) => {
+                                            console.error("Error updating Firestore document: ", error);
+                                        });
+                                } else {
+                                    // User is not signed in or signed out
+                                    console.log("No user is currently signed in.");
+                                }
+                            });
+
+                        }).catch(function (error) {
+                            // Handle error getting download URL
+                            console.error("Error getting download URL: ", error);
+                        });
+                    }
+                );
+            }
+
+
+
+        </script>
+
+
+    </div>
+    <!-- jQuery -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
+    <!-- Bootstrap 5 JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+
+</html>
